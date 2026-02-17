@@ -13,7 +13,7 @@ import (
 )
 
 type ConfigItem struct {
-	Key   string `gorm:"primaryKey;column:key;type:text"`
+	Key   string `gorm:"primaryKey;column:key;type:varchar(255)"`
 	Value string `gorm:"column:value;type:text"` // 存 JSON 字符串
 }
 

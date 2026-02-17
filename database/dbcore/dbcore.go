@@ -223,11 +223,11 @@ func MergeDatabase(db *gorm.DB) {
 		log.Println("[>0.0.5] Legacy ClientInfo table detected, starting data migration...")
 		mergeClientInfo(db)
 	}
-	if db.Migrator().HasColumn(&models.Config{}, "allow_cros") {
+	if db.Migrator().HasTable(&models.Config{}) && db.Migrator().HasColumn(&models.Config{}, "allow_cros") {
 		log.Println("[>0.0.5a] Renaming column 'allow_cros' to 'allow_cors' in config table...")
 		db.Migrator().RenameColumn(&models.Config{}, "allow_cros", "allow_cors")
 	}
-	if db.Migrator().HasColumn(&models.LoadNotification{}, "client") {
+	if db.Migrator().HasTable(&models.LoadNotification{}) && db.Migrator().HasColumn(&models.LoadNotification{}, "client") {
 		log.Println("[>0.1.4] Rebuilding LoadNotification table....")
 		db.Migrator().DropTable(&models.LoadNotification{})
 	}
