@@ -71,6 +71,7 @@ type Session struct {
 
 // Record logs client metrics over time
 type Record struct {
+	ID             uint      `json:"id,omitempty" gorm:"primaryKey;autoIncrement"`
 	Client         string    `json:"client" gorm:"type:varchar(36);index"`
 	Time           LocalTime `json:"time" gorm:"index"`
 	Cpu            float32   `json:"cpu" gorm:"type:decimal(5,2)"` // e.g., 75.50%
@@ -95,6 +96,7 @@ type Record struct {
 
 // GPURecord logs individual GPU metrics over time
 type GPURecord struct {
+	ID          uint      `json:"id,omitempty" gorm:"primaryKey;autoIncrement"`
 	Client      string    `json:"client" gorm:"type:varchar(36);index"`           // 客户端UUID
 	Time        LocalTime `json:"time" gorm:"index"`                              // 记录时间
 	DeviceIndex int       `json:"device_index" gorm:"index"`                      // GPU设备索引 (0,1,2...)

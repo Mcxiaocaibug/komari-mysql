@@ -8,6 +8,7 @@ type Task struct {
 }
 
 type TaskResult struct {
+	ID         uint       `json:"id,omitempty" gorm:"primaryKey;autoIncrement"`
 	TaskId     string     `json:"task_id" gorm:"type:varchar(36);index"`
 	Client     string     `json:"client" gorm:"type:varchar(36)"`
 	ClientInfo Client     `json:"client_info" gorm:"foreignKey:Client;references:UUID;constraint:OnDelete:CASCADE,OnUpdate:CASCADE"`
