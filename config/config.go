@@ -86,7 +86,7 @@ func migrateInPlace() {
 // Get 获取原始值 (反序列化为 interface{})
 func Get(key string, defaul ...any) (any, error) {
 	var item ConfigItem
-	err := db.First(&item, "key = ?", key).Error
+	err := db.First(&item, "`key` = ?", key).Error
 	if err != nil {
 		if len(defaul) > 0 {
 			v := defaul[0]
@@ -108,7 +108,7 @@ func GetAs[T any](key string, defaul ...any) (T, error) {
 	var t T
 	var item ConfigItem
 
-	err := db.First(&item, "key = ?", key).Error
+	err := db.First(&item, "`key` = ?", key).Error
 	if err != nil {
 		if len(defaul) > 0 {
 			// 尝试直接类型断言
@@ -155,7 +155,7 @@ func GetMany(keys map[string]any) (map[string]any, error) {
 	if len(keyList) == 0 {
 		return result, nil
 	}
-	if err := db.Where("key IN ?", keyList).Find(&items).Error; err != nil {
+	if err := db.Where("`key` IN ?", keyList).Find(&items).Error; err != nil {
 		return nil, err
 	}
 
@@ -250,7 +250,7 @@ func GetManyAs[T any]() (*T, error) {
 	}
 
 	var items []ConfigItem
-	if err := db.Where("key IN ?", keys).Find(&items).Error; err != nil {
+	if err := db.Where("`key` IN ?", keys).Find(&items).Error; err != nil {
 		return nil, err
 	}
 
@@ -448,7 +448,7 @@ func Set(key string, value any) error {
 	oldVal := map[string]any{}
 	{
 		var oldItem ConfigItem
-		if err := db.First(&oldItem, "key = ?", key).Error; err == nil {
+		if err := db.First(&oldItem, "`key` = ?", key).Error; err == nil {
 			var parsed any
 			if err := json.Unmarshal([]byte(oldItem.Value), &parsed); err == nil {
 				oldVal[key] = parsed
@@ -527,7 +527,7 @@ func SetManyAs[T any](config T) error {
 	oldVal := map[string]any{}
 	if len(keys) > 0 {
 		var oldItems []ConfigItem
-		if err := db.Where("key IN ?", keys).Find(&oldItems).Error; err == nil {
+		if err := db.Where("`key` IN ?", keys).Find(&oldItems).Error; err == nil {
 			for _, oi := range oldItems {
 				var parsed any
 				if err := json.Unmarshal([]byte(oi.Value), &parsed); err == nil {
@@ -578,7 +578,7 @@ func SetMany(cst map[string]any) error {
 	oldVal := map[string]any{}
 	if len(keys) > 0 {
 		var oldItems []ConfigItem
-		if err := db.Where("key IN ?", keys).Find(&oldItems).Error; err == nil {
+		if err := db.Where("`key` IN ?", keys).Find(&oldItems).Error; err == nil {
 			for _, oi := range oldItems {
 				var parsed any
 				if err := json.Unmarshal([]byte(oi.Value), &parsed); err == nil {
