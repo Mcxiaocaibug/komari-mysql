@@ -27,11 +27,27 @@ func DeleteClientConfig(clientUuid string) error {
 }
 func DeleteClient(clientUuid string) error {
 	db := dbcore.GetDBInstance()
-	err := db.Delete(&models.Client{}, "uuid = ?", clientUuid).Error
-	if err != nil {
-		return err
-	}
-	return nil
+	return db.Transaction(func(tx *gorm.DB) error {
+		// Delete related records to avoid FK constraints or orphans
+		if err := tx.Where("client = ?", clientUuid).Delete(&models.Record{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("client = ?", clientUuid).Delete(&models.GPURecord{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("client = ?", clientUuid).Delete(&models.OfflineNotification{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("client = ?", clientUuid).Delete(&models.TaskResult{}).Error; err != nil {
+			return err
+		}
+
+		// Finally delete the client
+		if err := tx.Where("uuid = ?", clientUuid).Delete(&models.Client{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // Deprecated: UpdateOrInsertBasicInfo is deprecated and will be removed in a future release. Use SaveClientInfo instead.
