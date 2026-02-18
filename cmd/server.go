@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -72,6 +73,7 @@ func RunServer() {
 		log.Fatalf("Failed to create theme directory: %v", err)
 	}
 	InitDatabase()
+	RestorePersistentFiles()
 	if utils.VersionHash != "unknown" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -427,4 +429,42 @@ func OnShutdown() {
 func OnFatal(err error) {
 	auditlog.Log("", "", "server encountered a fatal error: "+err.Error(), "error")
 	cloudflared.Kill()
+}
+
+func RestorePersistentFiles() {
+	db := dbcore.GetDBInstance()
+
+	// 1. Restore Favicon
+	var staticFile models.StaticFile
+	if err := db.First(&staticFile, "name = ?", "favicon.ico").Error; err == nil {
+		if err := os.WriteFile("./data/favicon.ico", staticFile.Data, 0644); err != nil {
+			log.Printf("Failed to restore favicon: %v", err)
+		} else {
+			log.Println("Restored favicon.ico from database")
+		}
+	}
+
+	// 2. Restore Themes
+	var themeFiles []models.ThemeFile
+	if err := db.Find(&themeFiles).Error; err == nil {
+		for _, tf := range themeFiles {
+			themeDir := filepath.Join("./data/theme", tf.Short)
+			if _, err := os.Stat(themeDir); os.IsNotExist(err) {
+				log.Printf("Restoring theme %s from database...", tf.Short)
+				// Write zip to temp
+				tempFile := filepath.Join(os.TempDir(), "restore_"+tf.Short+".zip")
+				if err := os.WriteFile(tempFile, tf.Data, 0644); err != nil {
+					log.Printf("Failed to write temp zip for theme %s: %v", tf.Short, err)
+					continue
+				}
+				
+				if err := dbcore.UnzipToDir(tempFile, "./data/theme/"+tf.Short); err != nil {
+					log.Printf("Failed to unzip theme %s: %v", tf.Short, err)
+				} else {
+					log.Printf("Restored theme %s", tf.Short)
+				}
+				os.Remove(tempFile)
+			}
+		}
+	}
 }

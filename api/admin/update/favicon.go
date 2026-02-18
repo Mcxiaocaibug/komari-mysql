@@ -9,6 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/komari-monitor/komari/api"
 	"github.com/komari-monitor/komari/database/auditlog"
+	"github.com/komari-monitor/komari/database/dbcore"
+	"github.com/komari-monitor/komari/database/models"
 )
 
 func UploadFavicon(c *gin.Context) {
@@ -26,6 +28,18 @@ func UploadFavicon(c *gin.Context) {
 		api.RespondError(c, http.StatusInternalServerError, "Failed to save favicon: "+err.Error())
 		return
 	}
+
+	// 数据库持久化
+	db := dbcore.GetDBInstance()
+	staticFile := models.StaticFile{
+		Name: "favicon.ico",
+		Data: data,
+	}
+	if err := db.Save(&staticFile).Error; err != nil {
+		api.RespondError(c, http.StatusInternalServerError, "Failed to save favicon to DB: "+err.Error())
+		return
+	}
+
 	uuid, _ := c.Get("uuid")
 	auditlog.Log(c.ClientIP(), uuid.(string), "Favicon uploaded", "info")
 	api.RespondSuccess(c, nil)
@@ -40,6 +54,11 @@ func DeleteFavicon(c *gin.Context) {
 		}
 		return
 	}
+
+	// 数据库删除
+	db := dbcore.GetDBInstance()
+	db.Delete(&models.StaticFile{}, "name = ?", "favicon.ico")
+
 	uuid, _ := c.Get("uuid")
 	auditlog.Log(c.ClientIP(), uuid.(string), "Favicon deleted", "info")
 	api.RespondSuccess(c, nil)

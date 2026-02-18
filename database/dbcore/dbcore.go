@@ -118,8 +118,8 @@ func removeAllInDirExcept(dir string, exclude map[string]struct{}) error {
 	return nil
 }
 
-// unzipToDir 将 zipPath 解压到 dstDir，包含路径遍历保护
-func unzipToDir(zipPath, dstDir string) error {
+// UnzipToDir 将 zipPath 解压到 dstDir，包含路径遍历保护
+func UnzipToDir(zipPath, dstDir string) error {
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return err
@@ -387,7 +387,7 @@ func GetDBInstance() *gorm.DB {
 				}
 
 				// 6. 解压 ./data/backup.zip 到 ./data
-				if unzipErr := unzipToDir(backupZipPath, "./data"); unzipErr != nil {
+				if unzipErr := UnzipToDir(backupZipPath, "./data"); unzipErr != nil {
 					log.Printf("[restore] failed to unzip backup into data: %v", unzipErr)
 				} else {
 					log.Printf("[restore] backup.zip extracted to ./data")
@@ -461,6 +461,8 @@ func GetDBInstance() *gorm.DB {
 			&models.OidcProvider{},
 			&models.MessageSenderProvider{},
 			&models.ThemeConfiguration{},
+			&models.ThemeFile{},
+			&models.StaticFile{},
 		)
 		if err != nil {
 			log.Fatalf("Failed to create tables: %v", err)

@@ -23,15 +23,15 @@ import (
 // UploadTheme 上传主题
 func UploadTheme(c *gin.Context) {
 	// 读取上传的文件内容
-	data, err := io.ReadAll(c.Request.Body)
-	if err != nil || len(data) == 0 {
+	fileContent, err := io.ReadAll(c.Request.Body)
+	if err != nil || len(fileContent) == 0 {
 		api.RespondError(c, http.StatusBadRequest, "请选择要上传的主题文件")
 		return
 	}
 
 	// 临时文件名
 	tempFile := filepath.Join(os.TempDir(), "uploaded_theme.zip")
-	if err := os.WriteFile(tempFile, data, 0644); err != nil {
+	if err := os.WriteFile(tempFile, fileContent, 0644); err != nil {
 		api.RespondError(c, http.StatusInternalServerError, "保存文件失败: "+err.Error())
 		return
 	}
@@ -47,6 +47,18 @@ func UploadTheme(c *gin.Context) {
 	themeInfo, err := extractAndValidateTheme(tempFile)
 	if err != nil {
 		api.RespondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// 保存到数据库
+	db := dbcore.GetDBInstance()
+	themeFile := models.ThemeFile{
+		Short: themeInfo.Short,
+		Data:  fileContent, // Use the original zip content
+	}
+	// Use Clauses to handle upsert (on duplicate key update)
+	if err := db.Save(&themeFile).Error; err != nil {
+		api.RespondError(c, http.StatusInternalServerError, "保存主题到数据库失败: "+err.Error())
 		return
 	}
 
@@ -118,6 +130,13 @@ func DeleteTheme(c *gin.Context) {
 	// 删除主题目录
 	if err := os.RemoveAll(themeDir); err != nil {
 		api.RespondError(c, http.StatusInternalServerError, "删除主题失败: "+err.Error())
+		return
+	}
+
+	// 从数据库删除
+	db := dbcore.GetDBInstance()
+	if err := db.Delete(&models.ThemeFile{}, "short = ?", req.Short).Error; err != nil {
+		api.RespondError(c, http.StatusInternalServerError, "从数据库删除主题失败: "+err.Error())
 		return
 	}
 
