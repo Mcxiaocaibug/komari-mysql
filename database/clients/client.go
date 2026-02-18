@@ -41,6 +41,9 @@ func DeleteClient(clientUuid string) error {
 		if err := tx.Where("client = ?", clientUuid).Delete(&models.TaskResult{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("client = ?", clientUuid).Delete(&models.PingRecord{}).Error; err != nil {
+			return err
+		}
 
 		// Finally delete the client
 		if err := tx.Where("uuid = ?", clientUuid).Delete(&models.Client{}).Error; err != nil {

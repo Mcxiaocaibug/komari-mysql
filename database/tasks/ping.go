@@ -79,9 +79,6 @@ func DeletePingRecords(id []uint) error {
 func DeleteAllPingRecords() error {
 	db := dbcore.GetDBInstance()
 	result := db.Exec("DELETE FROM ping_records")
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
 	return result.Error
 }
 func ReloadPingSchedule() error {
