@@ -14,6 +14,6 @@ type TaskResult struct {
 	ClientInfo Client     `json:"client_info" gorm:"foreignKey:Client;references:UUID;constraint:OnDelete:CASCADE,OnUpdate:CASCADE"`
 	Result     string     `json:"result" gorm:"type:longtext"`
 	ExitCode   *int       `json:"exit_code" gorm:"type:int"`
-	FinishedAt *LocalTime `json:"finished_at" gorm:"type:timestamp"`
-	CreatedAt  LocalTime  `json:"created_at" gorm:"type:timestamp"`
+	FinishedAt *LocalTime `json:"finished_at" gorm:"type:datetime"`
+	CreatedAt  LocalTime  `json:"created_at" gorm:"type:datetime"`
 }

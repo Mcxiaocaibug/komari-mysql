@@ -32,7 +32,7 @@ type Client struct {
 	BillingCycle     int       `json:"billing_cycle"`
 	AutoRenewal      bool      `json:"auto_renewal" gorm:"default:false"` // 是否自动续费
 	Currency         string    `json:"currency" gorm:"type:varchar(20);default:'$'"`
-	ExpiredAt        LocalTime `json:"expired_at" gorm:"type:timestamp"`
+	ExpiredAt        LocalTime `json:"expired_at" gorm:"type:datetime"`
 	Group            string    `json:"group" gorm:"type:varchar(100)"`
 	Tags             string    `json:"tags" gorm:"type:text"` // split by ';'
 	Hidden           bool      `json:"hidden" gorm:"default:false"`
@@ -62,7 +62,7 @@ type Session struct {
 	UserAgent       string    `json:"user_agent" gorm:"type:text"`
 	Ip              string    `json:"ip" gorm:"type:varchar(100)"`
 	LoginMethod     string    `json:"login_method" gorm:"type:varchar(50)"`
-	LatestOnline    LocalTime `json:"latest_online" gorm:"type:timestamp"`
+	LatestOnline    LocalTime `json:"latest_online" gorm:"type:datetime"`
 	LatestUserAgent string    `json:"latest_user_agent" gorm:"type:text"`
 	LatestIp        string    `json:"latest_ip" gorm:"type:varchar(100)"`
 	Expires         LocalTime `json:"expires" gorm:"not null"`

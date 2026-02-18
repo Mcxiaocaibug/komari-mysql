@@ -51,7 +51,7 @@ type ClientInfo struct {
 	Weight         int       `json:"weight" gorm:"type:int"`
 	Price          float64   `json:"price"`
 	BillingCycle   int       `json:"billing_cycle"`
-	ExpiredAt      time.Time `json:"expired_at" gorm:"type:timestamp"`
+	ExpiredAt      time.Time `json:"expired_at" gorm:"type:datetime"`
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
