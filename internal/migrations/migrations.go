@@ -97,6 +97,9 @@ func Run(ctx Context) error {
 	}
 
 	legacyConfigTable := hasLegacyConfigTable(db)
+	if err := prepareMySQLPrimaryKeys(db); err != nil {
+		return err
+	}
 	if err := migrateLegacyTimestampColumns(db); err != nil {
 		return err
 	}

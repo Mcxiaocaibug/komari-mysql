@@ -53,6 +53,8 @@ var mysqlBackupTables = []mysqlBackupTableDescriptor{
 	{Name: "sessions", NewSlice: func() any { return &[]models.Session{} }, ForeignKey: true},
 	{Name: "tasks", NewSlice: func() any { return &[]models.Task{} }},
 	{Name: "task_results", NewSlice: func() any { return &[]models.TaskResult{} }, ForeignKey: true},
+	{Name: "persistent_files", NewSlice: func() any { return &[]models.PersistentFile{} }},
+	{Name: "persistent_file_chunks", NewSlice: func() any { return &[]models.PersistentFileChunk{} }, ForeignKey: true},
 }
 
 var mysqlBackupRestoreOrder = []string{
@@ -72,6 +74,8 @@ var mysqlBackupRestoreOrder = []string{
 	"sessions",
 	"tasks",
 	"task_results",
+	"persistent_files",
+	"persistent_file_chunks",
 }
 
 func ExportMySQLBackupToFile(path string) error {

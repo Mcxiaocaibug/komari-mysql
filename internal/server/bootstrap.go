@@ -35,6 +35,17 @@ func (a *App) Bootstrap() error {
 	if err := defaultMetricStoreToPrimaryMySQL(); err != nil {
 		return fmt.Errorf("failed to configure MySQL metric storage: %w", err)
 	}
+	if err := dbcore.RestorePersistentFiles(context.Background(), "./data"); err != nil {
+		return fmt.Errorf("failed to restore MySQL-backed files: %w", err)
+	}
+	if flags.IsMySQL() {
+		if err := dbcore.SyncPersistentFiles(context.Background(), "./data"); err != nil {
+			return fmt.Errorf("failed to initialize MySQL file mirror: %w", err)
+		}
+		a.addCleanup("mysql-file-mirror", func(ctx context.Context) error {
+			return dbcore.SyncPersistentFilesWithTimeout(ctx, "./data")
+		})
+	}
 
 	gin.SetMode(gin.ReleaseMode)
 	settings, err := config.GetManyAs[config.Settings]()

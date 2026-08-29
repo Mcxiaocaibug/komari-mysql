@@ -48,9 +48,10 @@ KOMARI_DB_DSN='USER:PASSWORD@tcp(HOST:3306)/komari?charset=utf8mb4&parseTime=tru
 The split variables `KOMARI_DB_HOST`, `KOMARI_DB_PORT`, `KOMARI_DB_USER`,
 `KOMARI_DB_PASS`, and `KOMARI_DB_NAME` can be used instead. Existing Metric
 Store settings are preserved; use the upstream database migration page to move
-an existing SQLite Metric Store to MySQL. Theme/plugin packages and plugin file
-storage remain filesystem assets and continue to be included in Komari backup
-archives; relational state and monitoring data are stored in MySQL.
+an existing SQLite Metric Store to MySQL. Mutable file assets (themes, plugins,
+plugin storage, favicon, font, and GeoIP data) are mirrored into chunked MySQL
+tables and restored on a stateless redeploy, while remaining available as local
+files to the runtime.
 
 ## Screenshots
 

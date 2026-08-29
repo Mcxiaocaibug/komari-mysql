@@ -533,6 +533,8 @@ func doInitialize() error {
 		&models.MessageSenderProvider{},
 		&models.ThemeConfiguration{},
 		&models.PluginConfiguration{},
+		&models.PersistentFile{},
+		&models.PersistentFileChunk{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create tables: %w", err)

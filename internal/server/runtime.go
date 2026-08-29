@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/komari-monitor/komari/cmd/flags"
 	"github.com/komari-monitor/komari/database"
 	"github.com/komari-monitor/komari/database/accounts"
 	"github.com/komari-monitor/komari/database/auditlog"
+	"github.com/komari-monitor/komari/database/dbcore"
 	d_notification "github.com/komari-monitor/komari/database/notification"
 	"github.com/komari-monitor/komari/database/tasks"
 	"github.com/komari-monitor/komari/internal/config"
@@ -200,6 +202,11 @@ func registerScheduledWork() {
 	if err := scheduler.AddContextFunc("metrics:retention", "@every 1h", true, cleanupMetricStore); err != nil {
 		logger.ErrorArgs("server", "Failed to add metric retention scheduled task:", err)
 	}
+	if flags.IsMySQL() {
+		if err := scheduler.AddContextFunc("mysql:files", "@every 5m", true, syncMySQLFiles); err != nil {
+			logger.ErrorArgs("server", "Failed to add MySQL file mirror task:", err)
+		}
+	}
 	if err := scheduler.AddFunc("notifier:traffic", "@every 1m", notifier.CheckTraffic); err != nil {
 		logger.ErrorArgs("server", "Failed to add traffic notification task:", err)
 	}
@@ -207,6 +214,14 @@ func registerScheduledWork() {
 		logger.ErrorArgs("server", "Failed to add expire notification task:", err)
 	}
 	notifier.InitTrafficReportSchedule()
+}
+
+func syncMySQLFiles(ctx context.Context) {
+	syncCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if err := dbcore.SyncPersistentFiles(syncCtx, "./data"); err != nil {
+		logger.Errorf("server", "Failed to synchronize persistent files to MySQL: %v", err)
+	}
 }
 
 const taskResultRetentionDays = 30
