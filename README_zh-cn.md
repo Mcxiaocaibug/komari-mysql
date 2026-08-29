@@ -31,6 +31,24 @@ Komari 是一款轻量级的自托管服务器监控工具，旨在提供简单�
 
 Docker、二进制文件、源码构建和更新说明，请参阅 [安装指南](https://www.komari.wiki/install/quick-start).
 
+## 完整 MySQL 模式
+
+本分支支持将主业务数据库和监控 Metric Store 都存入 MySQL。全新 MySQL
+安装会自动让 Metric Store 复用同一个 MySQL 数据库，并使用 `metric_` 表前缀；
+因此账号、节点、配置、任务、通知、审计数据和监控历史都会持久化到 MySQL。
+
+```bash
+KOMARI_DB_TYPE=mysql \
+KOMARI_DB_DSN='USER:PASSWORD@tcp(HOST:3306)/komari?charset=utf8mb4&parseTime=true&loc=UTC' \
+./komari server
+```
+
+也可以使用 `KOMARI_DB_HOST`、`KOMARI_DB_PORT`、`KOMARI_DB_USER`、
+`KOMARI_DB_PASS`、`KOMARI_DB_NAME` 分项配置。已有的 Metric Store 配置不会被
+覆盖，可使用上游数据库迁移页面将现有 SQLite 监控库迁往 MySQL。主题/插件包与
+插件文件存储仍属于文件资源，并继续包含在 Komari 备份归档中；关系数据和监控数据
+均存入 MySQL。
+
 ## 截图
 
 | 页面         | 截图                                                                                                                                                         |

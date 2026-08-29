@@ -12,6 +12,11 @@ import (
 	"github.com/komari-monitor/komari/cmd/flags"
 )
 
+// DriverName returns the active primary database driver.
+func DriverName() string {
+	return flags.NormalizeDatabaseType(flags.DatabaseType)
+}
+
 var maintenanceMu sync.Mutex
 
 // StorageSize returns the bytes occupied by the main SQLite database and its
@@ -25,10 +30,6 @@ func StorageSize() (int64, error) {
 
 // ReclaimSpace checkpoints the main database WAL and rewrites the SQLite file.
 func ReclaimSpace(ctx context.Context) error {
-	if !flags.IsSQLite() {
-		return errors.New("main database maintenance is only supported for SQLite")
-	}
-
 	maintenanceMu.Lock()
 	defer maintenanceMu.Unlock()
 
@@ -36,13 +37,45 @@ func ReclaimSpace(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("get main database connection: %w", err)
 	}
-	if err := checkpointSQLiteWAL(ctx, db); err != nil {
-		return err
+	if flags.IsSQLite() {
+		if err := checkpointSQLiteWAL(ctx, db); err != nil {
+			return err
+		}
+		if _, err := db.ExecContext(ctx, "VACUUM"); err != nil {
+			return fmt.Errorf("vacuum main database: %w", err)
+		}
+		return checkpointSQLiteWAL(ctx, db)
 	}
-	if _, err := db.ExecContext(ctx, "VACUUM"); err != nil {
-		return fmt.Errorf("vacuum main database: %w", err)
+	if flags.IsMySQL() {
+		rows, err := db.QueryContext(ctx, "SHOW TABLES")
+		if err != nil {
+			return fmt.Errorf("list MySQL main database tables: %w", err)
+		}
+		var tables []string
+		for rows.Next() {
+			var table string
+			if err := rows.Scan(&table); err != nil {
+				_ = rows.Close()
+				return fmt.Errorf("scan MySQL main database table: %w", err)
+			}
+			tables = append(tables, "`"+strings.ReplaceAll(table, "`", "``")+"`")
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("iterate MySQL main database tables: %w", err)
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("close MySQL main database table list: %w", err)
+		}
+		if len(tables) == 0 {
+			return nil
+		}
+		if _, err := db.ExecContext(ctx, "OPTIMIZE TABLE "+strings.Join(tables, ", ")); err != nil {
+			return fmt.Errorf("optimize MySQL main database: %w", err)
+		}
+		return nil
 	}
-	return checkpointSQLiteWAL(ctx, db)
+	return fmt.Errorf("main database maintenance is unsupported for %s", DriverName())
 }
 
 func checkpointSQLiteWAL(ctx context.Context, db *sql.DB) error {

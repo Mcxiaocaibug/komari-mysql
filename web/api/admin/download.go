@@ -159,6 +159,22 @@ func DownloadBackup(c *gin.Context) {
 			api.RespondError(c, http.StatusInternalServerError, fmt.Sprintf("Error backing up sqlite database: %v", err))
 			return
 		}
+	} else if flags.IsMySQL() {
+		mysqlBackupPath := filepath.Join(contentDir, dbcore.MySQLBackupFileName)
+		mysqlBackup, createErr := os.Create(mysqlBackupPath)
+		if createErr != nil {
+			api.RespondError(c, http.StatusInternalServerError, fmt.Sprintf("Error creating MySQL backup: %v", createErr))
+			return
+		}
+		err := dbcore.ExportMySQLBackup(mysqlBackup)
+		closeErr := mysqlBackup.Close()
+		if err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			api.RespondError(c, http.StatusInternalServerError, fmt.Sprintf("Error backing up MySQL database: %v", err))
+			return
+		}
 	} else if dbFilePath != "" {
 		if _, err := os.Stat(dbFilePath); err == nil {
 			if err := copyFile(dbFilePath, destDB); err != nil {

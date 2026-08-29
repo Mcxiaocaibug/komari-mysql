@@ -6,8 +6,11 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/komari-monitor/komari/cmd/flags"
 	"github.com/komari-monitor/komari/database/dbcore"
 	"github.com/komari-monitor/komari/internal/config"
+	"github.com/komari-monitor/komari/internal/metricstore"
+	"github.com/komari-monitor/komari/pkg/metric"
 	"github.com/komari-monitor/komari/utils"
 )
 
@@ -29,6 +32,9 @@ func (a *App) Bootstrap() error {
 	}
 	a.dbReady = true
 	a.addCleanup("database", func(context.Context) error { return dbcore.Close() })
+	if err := defaultMetricStoreToPrimaryMySQL(); err != nil {
+		return fmt.Errorf("failed to configure MySQL metric storage: %w", err)
+	}
 
 	gin.SetMode(gin.ReleaseMode)
 	settings, err := config.GetManyAs[config.Settings]()
@@ -37,4 +43,28 @@ func (a *App) Bootstrap() error {
 	}
 	a.settings = settings
 	return nil
+}
+
+// defaultMetricStoreToPrimaryMySQL makes a new MySQL deployment fully MySQL
+// backed. Existing installations keep their explicitly configured independent
+// Metric Store target and can still migrate it through the upstream UI.
+func defaultMetricStoreToPrimaryMySQL() error {
+	if !flags.IsMySQL() {
+		return nil
+	}
+	persisted, err := metricstore.PersistedConfig()
+	if err != nil {
+		return err
+	}
+	if persisted {
+		return nil
+	}
+	dsn, err := dbcore.MySQLDSN()
+	if err != nil {
+		return err
+	}
+	return config.SetMany(map[string]any{
+		metricstore.MetricDBDriverKey: string(metric.DriverMySQL),
+		metricstore.MetricDBDSNKey:    dsn,
+	})
 }

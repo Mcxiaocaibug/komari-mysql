@@ -8,6 +8,8 @@ func TestNormalizeDatabaseType(t *testing.T) {
 		"sqlite":    DatabaseTypeSQLite,
 		" SQLite ":  DatabaseTypeSQLite,
 		"SQLITE":    DatabaseTypeSQLite,
+		"mysql":     DatabaseTypeMySQL,
+		" MySQL ":   DatabaseTypeMySQL,
 		"postgres":  "postgres",
 		" postgres": "postgres",
 	}
@@ -16,5 +18,11 @@ func TestNormalizeDatabaseType(t *testing.T) {
 		if got := NormalizeDatabaseType(input); got != want {
 			t.Fatalf("NormalizeDatabaseType(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestSupportedDatabaseTypes(t *testing.T) {
+	if got := SupportedDatabaseTypes(); got != "sqlite, mysql" {
+		t.Fatalf("SupportedDatabaseTypes() = %q, want %q", got, "sqlite, mysql")
 	}
 }

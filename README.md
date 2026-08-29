@@ -31,6 +31,27 @@ Komari is a lightweight, self-hosted server monitoring solution. It provides a s
 
 For instructions on Docker deployment, binary installation, building from source, and updates, see the [installation guide](https://www.komari.wiki/en/install/quick-start).
 
+## Full MySQL mode
+
+This fork can store the primary application database and the monitoring Metric
+Store in MySQL. On a new MySQL installation, the Metric Store automatically
+uses the same MySQL database with the `metric_` table prefix, so accounts,
+clients, settings, tasks, notifications, audit data, and monitoring history are
+all persisted in MySQL.
+
+```bash
+KOMARI_DB_TYPE=mysql \
+KOMARI_DB_DSN='USER:PASSWORD@tcp(HOST:3306)/komari?charset=utf8mb4&parseTime=true&loc=UTC' \
+./komari server
+```
+
+The split variables `KOMARI_DB_HOST`, `KOMARI_DB_PORT`, `KOMARI_DB_USER`,
+`KOMARI_DB_PASS`, and `KOMARI_DB_NAME` can be used instead. Existing Metric
+Store settings are preserved; use the upstream database migration page to move
+an existing SQLite Metric Store to MySQL. Theme/plugin packages and plugin file
+storage remain filesystem assets and continue to be included in Komari backup
+archives; relational state and monitoring data are stored in MySQL.
+
 ## Screenshots
 
 | Page                | Screenshot                                                                                                                                                             |

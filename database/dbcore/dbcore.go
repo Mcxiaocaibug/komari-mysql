@@ -4,18 +4,21 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	mysqlDriver "github.com/go-sql-driver/mysql"
 	"github.com/komari-monitor/komari/cmd/flags"
 	"github.com/komari-monitor/komari/database/models"
 	"github.com/komari-monitor/komari/internal/config"
 	"github.com/komari-monitor/komari/internal/migrations"
 	"github.com/komari-monitor/komari/internal/sqlitetune"
 	logger "github.com/komari-monitor/komari/utils/log"
+	gormMySQL "gorm.io/driver/mysql"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -89,35 +92,8 @@ func zipDirectoryExcluding(srcDir, dstZip string, exclude map[string]struct{}) e
 	return zw.Close()
 }
 
-// removeAllInDirExcept 删除 dir 下除 exclude 指定绝对路径外的所有文件和文件夹
-func removeAllInDirExcept(dir string, exclude map[string]struct{}) error {
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return err
-	}
-	normExclude := make(map[string]struct{}, len(exclude))
-	for p := range exclude {
-		abs, _ := filepath.Abs(p)
-		normExclude[abs] = struct{}{}
-	}
-	entries, err := os.ReadDir(absDir)
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		full := filepath.Join(absDir, e.Name())
-		if _, ok := normExclude[full]; ok {
-			continue
-		}
-		if err := os.RemoveAll(full); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// unzipToDir 将 zipPath 解压到 dstDir，包含路径遍历保护
-func unzipToDir(zipPath, dstDir string) error {
+// UnzipToDir 将 zipPath 解压到 dstDir，包含路径遍历保护。
+func UnzipToDir(zipPath, dstDir string) error {
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return err
@@ -161,6 +137,71 @@ func unzipToDir(zipPath, dstDir string) error {
 		}
 		out.Close()
 		rc.Close()
+	}
+	return nil
+}
+
+// applyBackupZipIfPresent validates and extracts a backup into a staging
+// directory before swapping it into place. Existing data remains untouched
+// when validation or extraction fails.
+func applyBackupZipIfPresent(dataDir, backupDir, backupZipPath string) (restoreErr error) {
+	if _, err := os.Stat(backupZipPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat backup zip: %w", err)
+	}
+	absDataDir, err := filepath.Abs(dataDir)
+	if err != nil {
+		return err
+	}
+	absBackupZip, err := filepath.Abs(backupZipPath)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(absDataDir, 0o755); err != nil {
+		return err
+	}
+	parent := filepath.Dir(absDataDir)
+	stamp := time.Now().UTC().Format("20060102-150405.000000000")
+	staging := filepath.Join(parent, filepath.Base(absDataDir)+".restore-staging-"+stamp)
+	old := filepath.Join(parent, filepath.Base(absDataDir)+".restore-old-"+stamp)
+	defer func() {
+		if restoreErr != nil {
+			_ = os.RemoveAll(staging)
+		}
+	}()
+	if err := UnzipToDir(absBackupZip, staging); err != nil {
+		return fmt.Errorf("extract backup zip: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(staging, "komari-backup-markup")); err != nil {
+		return fmt.Errorf("invalid backup zip: missing komari-backup-markup: %w", err)
+	}
+	if backupDir != "" {
+		if err := os.MkdirAll(backupDir, 0o755); err == nil {
+			archive := filepath.Join(backupDir, "pre-restore-"+stamp+".zip")
+			if err := zipDirectoryExcluding(absDataDir, archive, map[string]struct{}{absBackupZip: {}}); err != nil {
+				logger.Errorf("dbcore", "[restore] failed to snapshot current data: %v", err)
+			}
+		}
+	}
+	if err := os.Rename(absDataDir, old); err != nil {
+		return fmt.Errorf("prepare restored data swap: %w", err)
+	}
+	if err := os.Rename(staging, absDataDir); err != nil {
+		_ = os.Rename(old, absDataDir)
+		return fmt.Errorf("apply restored data: %w", err)
+	}
+	if err := os.RemoveAll(old); err != nil {
+		logger.Errorf("dbcore", "[restore] failed to clean old data directory: %v", err)
+	}
+	for _, path := range []string{
+		filepath.Join(absDataDir, "backup.zip"),
+		filepath.Join(absDataDir, "komari-backup-markup"),
+	} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			logger.Errorf("dbcore", "[restore] failed to remove %s: %v", path, err)
+		}
 	}
 	return nil
 }
@@ -244,7 +285,9 @@ func backupOnVersionUpgrade() {
 	// 先做一次 WAL checkpoint，确保 komari.db 主文件包含最新数据，
 	// 避免备份出的库缺少仍留在 -wal 中的写入。
 	if instance != nil {
-		instance.Exec("PRAGMA wal_checkpoint(TRUNCATE);")
+		if flags.IsSQLite() {
+			instance.Exec("PRAGMA wal_checkpoint(TRUNCATE);")
+		}
 	}
 
 	backupDir := filepath.Join(".", "data", "backup")
@@ -255,6 +298,14 @@ func backupOnVersionUpgrade() {
 	tsName := time.Now().UTC().Format("20060102-150405")
 	bakPath := filepath.Join(backupDir, fmt.Sprintf("upgrade-%s.zip", tsName))
 	backupZipPath := filepath.Join(".", "data", "backup.zip")
+	mysqlSnapshotPath := filepath.Join(".", "data", MySQLBackupFileName)
+	if flags.IsMySQL() {
+		if err := exportMySQLBackupToFile(instance, mysqlSnapshotPath); err != nil {
+			logger.Errorf("dbcore", "[upgrade-backup] failed to snapshot MySQL before upgrade: %v", err)
+			return
+		}
+		defer os.Remove(mysqlSnapshotPath)
+	}
 	if zipErr := zipDirectoryExcluding("./data", bakPath, map[string]struct{}{backupZipPath: {}, backupDir: {}}); zipErr != nil {
 		logger.Errorf("dbcore", "[upgrade-backup] failed to backup ./data before upgrade (from %q to %q): %v", prevVersion, versionID, zipErr)
 		return
@@ -306,6 +357,45 @@ func mainSQLiteOptions() sqlitetune.Options {
 	}
 }
 
+// MySQLDSN returns the effective DSN for the primary MySQL database. A raw
+// KOMARI_DB_DSN/--db-dsn value wins; split connection settings remain
+// available for compatibility with existing deployments.
+func MySQLDSN() (string, error) {
+	if dsn := strings.TrimSpace(flags.DatabaseDSN); dsn != "" {
+		return dsn, nil
+	}
+	user := strings.TrimSpace(flags.DatabaseUser)
+	host := strings.TrimSpace(flags.DatabaseHost)
+	port := strings.TrimSpace(flags.DatabasePort)
+	name := strings.TrimSpace(flags.DatabaseName)
+	if user == "" || host == "" || port == "" || name == "" {
+		return "", fmt.Errorf("MySQL database user, host, port, and name are required")
+	}
+	config := mysqlDriverConfig(user, flags.DatabasePass, host, port, name)
+	return config, nil
+}
+
+func mysqlDriverConfig(user, password, host, port, name string) string {
+	config := mysqlDriver.NewConfig()
+	config.User = user
+	config.Passwd = password
+	config.Net = "tcp"
+	config.Addr = net.JoinHostPort(host, port)
+	config.DBName = name
+	config.ParseTime = true
+	config.Loc = time.UTC
+	config.Collation = "utf8mb4_unicode_ci"
+	config.Params = map[string]string{"charset": "utf8mb4"}
+	return config.FormatDSN()
+}
+
+func mysqlAddress() string {
+	if strings.TrimSpace(flags.DatabaseDSN) != "" {
+		return "configured DSN"
+	}
+	return net.JoinHostPort(flags.DatabaseHost, flags.DatabasePort)
+}
+
 // Initialize 显式初始化数据库连接与表结构，仅执行一次。
 // 与 GetDBInstance 不同，Initialize 返回错误而非直接退出进程，
 // 便于启动生命周期统一处理错误、以及在测试/CLI 命令中做隔离。
@@ -341,55 +431,23 @@ func Close() error {
 func doInitialize() error {
 	var err error
 
-	// 在数据库初始化前执行：如果存在 ./data/backup.zip，则进行恢复逻辑
-	func() {
-		backupZipPath := filepath.Join(".", "data", "backup.zip")
-		if _, statErr := os.Stat(backupZipPath); statErr == nil {
-			// 4. 将当前数据快照保存到 ./data/backup/，并保留已有归档。
-			backupDir := filepath.Join(".", "data", "backup")
-			if err := os.MkdirAll(backupDir, 0755); err != nil {
-				logger.Errorf("dbcore", "[restore] failed to create backup dir: %v", err)
-			} else {
-				tsName := time.Now().UTC().Format("20060102-150405")
-				bakPath := filepath.Join(backupDir, fmt.Sprintf("pre-restore-%s.zip", tsName))
-				if zipErr := zipDirectoryExcluding("./data", bakPath, map[string]struct{}{backupZipPath: {}, backupDir: {}}); zipErr != nil {
-					logger.Errorf("dbcore", "[restore] failed to zip current data: %v", zipErr)
-				} else {
-					logger.Infof("dbcore", "[restore] current data zipped to %s", bakPath)
-				}
-			}
-
-			// 5. 删除数据文件，但保留归档目录和待恢复的 backup.zip。
-			if delErr := removeAllInDirExcept("./data", map[string]struct{}{backupZipPath: {}, backupDir: {}}); delErr != nil {
-				logger.Errorf("dbcore", "[restore] failed to cleanup data dir: %v", delErr)
-			}
-
-			// 6. 解压 ./data/backup.zip 到 ./data
-			if unzipErr := unzipToDir(backupZipPath, "./data"); unzipErr != nil {
-				logger.Errorf("dbcore", "[restore] failed to unzip backup into data: %v", unzipErr)
-			} else {
-				logger.Infof("dbcore", "[restore] backup.zip extracted to ./data")
-			}
-
-			// 7. 删除 ./data/backup.zip
-			if rmErr := os.Remove(backupZipPath); rmErr != nil {
-				logger.Errorf("dbcore", "[restore] failed to remove backup.zip: %v", rmErr)
-			} else {
-				logger.Infof("dbcore", "[restore] backup.zip removed")
-			}
-			// 8. 删除标记
-			if rmErr := os.Remove("./data/komari-backup-markup"); rmErr != nil {
-				logger.Errorf("dbcore", "[restore] failed to remove komari-backup-markup: %v", rmErr)
-			} else {
-				logger.Infof("dbcore", "[restore] komari-backup-markup removed")
-			}
-		}
-	}()
+	// Validate and stage the archive before replacing any current file. A MySQL
+	// database snapshot inside it is imported after current tables are migrated.
+	if err := applyBackupZipIfPresent("./data", "./data/backup", filepath.Join(".", "data", "backup.zip")); err != nil {
+		return err
+	}
 
 	// 记录“打开数据库之前”komari.db 是否已存在，用于区分全新安装与旧版升级。
 	// 必须在（可能的）恢复逻辑之后、gorm.Open 之前采集：恢复会解压出旧库，
 	// gorm.Open 会创建空库。
-	if _, statErr := os.Stat(resolveDatabaseFile()); statErr == nil {
+	if flags.IsSQLite() {
+		if _, statErr := os.Stat(resolveDatabaseFile()); statErr == nil {
+			dbFileExistedAtStartup = true
+		}
+	} else {
+		// Server databases may already contain data even though no local file
+		// exists. Treat them as existing and let the persisted version marker
+		// decide whether an upgrade snapshot is needed.
 		dbFileExistedAtStartup = true
 	}
 
@@ -424,6 +482,23 @@ func doInitialize() error {
 		if err := instance.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error; err != nil {
 			logger.Errorf("dbcore", "Failed to checkpoint SQLite WAL at startup: %v", err)
 		}
+	case flags.DatabaseTypeMySQL:
+		dsn, dsnErr := MySQLDSN()
+		if dsnErr != nil {
+			return dsnErr
+		}
+		instance, err = gorm.Open(gormMySQL.Open(dsn), logConfig)
+		if err != nil {
+			return fmt.Errorf("failed to connect to MySQL database: %w", err)
+		}
+		sqlDB, dbErr := instance.DB()
+		if dbErr != nil {
+			return fmt.Errorf("get MySQL connection pool: %w", dbErr)
+		}
+		sqlDB.SetMaxOpenConns(25)
+		sqlDB.SetMaxIdleConns(5)
+		sqlDB.SetConnMaxLifetime(time.Hour)
+		logger.Infof("dbcore", "Using MySQL primary database at %s/%s", mysqlAddress(), flags.DatabaseName)
 	default:
 		return fmt.Errorf("unsupported database type: %s (supported: %s)", flags.DatabaseType, flags.SupportedDatabaseTypes())
 	}
@@ -472,6 +547,12 @@ func doInitialize() error {
 		&models.TaskResult{},
 	); err != nil {
 		logger.Errorf("dbcore", "Failed to create Task and TaskResult table, it may already exist: %v", err)
+	}
+	if flags.IsMySQL() {
+		backupPath := filepath.Join(".", "data", MySQLBackupFileName)
+		if err := restoreMySQLBackupIfPresent(instance, backupPath); err != nil {
+			return err
+		}
 	}
 
 	return nil

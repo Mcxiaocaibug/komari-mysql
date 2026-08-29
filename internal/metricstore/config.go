@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/komari-monitor/komari/internal/config"
 	"github.com/komari-monitor/komari/pkg/metric"
 )
 
@@ -217,6 +218,23 @@ func ResolveDriverFromConfig(configuredDriver, dsn string) metric.Driver {
 	default:
 		return metric.DriverSQLite
 	}
+}
+
+// PersistedConfig reports whether the metric database target has already
+// been explicitly stored in the primary settings database. This lets the
+// MySQL-primary bootstrap choose a matching default without overwriting an
+// administrator's existing independent Metric Store configuration.
+func PersistedConfig() (bool, error) {
+	values, err := config.GetMany(map[string]any{
+		MetricDBDriverKey: nil,
+		MetricDBDSNKey:    nil,
+	})
+	if err != nil {
+		return false, err
+	}
+	_, hasDriver := values[MetricDBDriverKey]
+	_, hasDSN := values[MetricDBDSNKey]
+	return hasDriver || hasDSN, nil
 }
 
 // InferDriverFromDSN 尽量根据常见 DSN 格式推断数据库类型。

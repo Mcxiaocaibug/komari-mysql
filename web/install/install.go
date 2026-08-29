@@ -14,7 +14,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/komari-monitor/komari/cmd/flags"
 	"github.com/komari-monitor/komari/database/accounts"
+	"github.com/komari-monitor/komari/database/dbcore"
 	"github.com/komari-monitor/komari/database/models"
 	appconfig "github.com/komari-monitor/komari/internal/config"
 	"github.com/komari-monitor/komari/internal/metricstore"
@@ -210,7 +212,7 @@ func validateRequest(request *completeRequest) error {
 	if utf8.RuneCountInString(request.Description) > 1000 {
 		return fmt.Errorf("site description must be at most 1000 characters")
 	}
-	if request.MetricDSN == "" {
+	if request.MetricDSN == "" && !flags.IsMySQL() {
 		return fmt.Errorf("monitoring database DSN is required")
 	}
 	return nil
@@ -227,6 +229,13 @@ func hasStrongPassword(password string) bool {
 }
 
 func metricConfig(request completeRequest) (*metricstore.MetricStoreConfig, error) {
+	if flags.IsMySQL() && strings.TrimSpace(request.MetricDSN) == "" {
+		dsn, err := dbcore.MySQLDSN()
+		if err != nil {
+			return nil, err
+		}
+		return &metricstore.MetricStoreConfig{Driver: "mysql", DSN: dsn}, nil
+	}
 	dsn := request.MetricDSN
 	driver, ok := metricstore.InferDriverFromDSN(dsn)
 	if !ok {

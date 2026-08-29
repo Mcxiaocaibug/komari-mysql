@@ -36,6 +36,12 @@ func Execute() {
 }
 
 func init() {
-	RootCmd.PersistentFlags().StringVarP(&flags.DatabaseType, "db-type", "t", "sqlite", "Database type (sqlite)")
-	RootCmd.PersistentFlags().StringVarP(&flags.DatabaseFile, "database", "d", "./data/komari.db", "SQLite database file path")
+	RootCmd.PersistentFlags().StringVarP(&flags.DatabaseType, "db-type", "t", GetEnv("KOMARI_DB_TYPE", "sqlite"), "Main database type (sqlite, mysql) [env: KOMARI_DB_TYPE]")
+	RootCmd.PersistentFlags().StringVarP(&flags.DatabaseFile, "database", "d", GetEnv("KOMARI_DB_FILE", "./data/komari.db"), "SQLite database file path [env: KOMARI_DB_FILE]")
+	RootCmd.PersistentFlags().StringVar(&flags.DatabaseDSN, "db-dsn", GetEnv("KOMARI_DB_DSN", ""), "MySQL DSN; takes precedence over split options [env: KOMARI_DB_DSN]")
+	RootCmd.PersistentFlags().StringVar(&flags.DatabaseHost, "db-host", GetEnv("KOMARI_DB_HOST", "localhost"), "MySQL host [env: KOMARI_DB_HOST]")
+	RootCmd.PersistentFlags().StringVar(&flags.DatabasePort, "db-port", GetEnv("KOMARI_DB_PORT", "3306"), "MySQL port [env: KOMARI_DB_PORT]")
+	RootCmd.PersistentFlags().StringVar(&flags.DatabaseUser, "db-user", GetEnv("KOMARI_DB_USER", "root"), "MySQL username [env: KOMARI_DB_USER]")
+	RootCmd.PersistentFlags().StringVar(&flags.DatabasePass, "db-pass", GetEnv("KOMARI_DB_PASS", ""), "MySQL password [env: KOMARI_DB_PASS]")
+	RootCmd.PersistentFlags().StringVar(&flags.DatabaseName, "db-name", GetEnv("KOMARI_DB_NAME", "komari"), "MySQL database name [env: KOMARI_DB_NAME]")
 }

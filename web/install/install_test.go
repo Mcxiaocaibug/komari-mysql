@@ -9,9 +9,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/internal/metricstore"
+	"github.com/komari-monitor/komari/cmd/flags"
 	"github.com/komari-monitor/komari/database/models"
 	appconfig "github.com/komari-monitor/komari/internal/config"
+	"github.com/komari-monitor/komari/internal/metricstore"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -129,5 +130,20 @@ func TestInstallRejectsUnknownDSN(t *testing.T) {
 	var count int64
 	if err := db.Model(&models.User{}).Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("failed DSN created users: count=%d err=%v", count, err)
+	}
+}
+
+func TestMetricConfigDefaultsToPrimaryMySQL(t *testing.T) {
+	originalType, originalDSN := flags.DatabaseType, flags.DatabaseDSN
+	defer func() { flags.DatabaseType, flags.DatabaseDSN = originalType, originalDSN }()
+	flags.DatabaseType = flags.DatabaseTypeMySQL
+	flags.DatabaseDSN = "USER:PASSWORD@tcp(HOST:3306)/komari?parseTime=true"
+
+	cfg, err := metricConfig(completeRequest{})
+	if err != nil {
+		t.Fatalf("metricConfig: %v", err)
+	}
+	if cfg.Driver != "mysql" || cfg.DSN != flags.DatabaseDSN {
+		t.Fatalf("metric config = %#v, want primary MySQL", cfg)
 	}
 }

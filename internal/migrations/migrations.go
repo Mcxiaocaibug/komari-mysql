@@ -140,14 +140,14 @@ func migrateDeprecatedMetricRetentionConfig(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&appconfig.ConfigItem{}) {
 		return nil
 	}
-	return db.Delete(&appconfig.ConfigItem{}, "key = ?", "metric_retention_days").Error
+	return db.Delete(&appconfig.ConfigItem{}, "`key` = ?", "metric_retention_days").Error
 }
 
 func migrateRemovedCompatibilityConfig(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&appconfig.ConfigItem{}) {
 		return nil
 	}
-	return db.Delete(&appconfig.ConfigItem{}, "key IN ?", []string{
+	return db.Delete(&appconfig.ConfigItem{}, "`key` IN ?", []string{
 		"nezha_compat_enabled",
 		"nezha_compat_listen",
 		"low_resource_mode",
@@ -429,7 +429,11 @@ func migrateLegacyPingAllClientsExpansion(db *gorm.DB) error {
 		return nil
 	}
 	if !hasTableColumn(db, "ping_tasks", "clients") {
-		if err := db.Exec("ALTER TABLE ping_tasks ADD COLUMN clients text").Error; err != nil {
+		columnType := "text"
+		if db.Dialector.Name() == "mysql" {
+			columnType = "longtext"
+		}
+		if err := db.Exec("ALTER TABLE ping_tasks ADD COLUMN clients " + columnType).Error; err != nil {
 			return fmt.Errorf("add clients column for legacy ping task expansion: %w", err)
 		}
 	}

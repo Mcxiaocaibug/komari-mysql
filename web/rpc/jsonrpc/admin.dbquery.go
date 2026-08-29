@@ -227,7 +227,7 @@ func executeDatabase(ctx context.Context, target, statement string, args []any) 
 			return nil, "", err
 		}
 		result, err := db.ExecContext(ctx, statement, args...)
-		return result, metric.DriverSQLite, err
+		return result, metric.Driver(dbcore.DriverName()), err
 	case databaseTargetMetrics:
 		return metricstore.ExecContext(ctx, statement, args...)
 	default:
@@ -244,7 +244,7 @@ func listDatabaseTables(ctx context.Context, target string) (databaseTablesRespo
 	)
 	switch target {
 	case databaseTargetMain:
-		statement, err := tableListSQL(metric.DriverSQLite)
+		statement, err := tableListSQL(metric.Driver(dbcore.DriverName()))
 		if err != nil {
 			return databaseTablesResponse{}, err
 		}
@@ -285,7 +285,7 @@ func openDatabaseRows(ctx context.Context, target, statement string, args ...any
 			return nil, "", nil, err
 		}
 		rows, err := db.QueryContext(ctx, statement, args...)
-		return rows, metric.DriverSQLite, func() {}, err
+		return rows, metric.Driver(dbcore.DriverName()), func() {}, err
 	case databaseTargetMetrics:
 		return metricstore.QueryContext(ctx, statement, args...)
 	default:

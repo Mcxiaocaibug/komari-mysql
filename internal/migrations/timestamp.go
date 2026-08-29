@@ -67,6 +67,12 @@ type timestampRow struct {
 // migrateLegacyTimestampColumns makes old offset-free SQLite values
 // unambiguous before any current model scans them as time.Time.
 func migrateLegacyTimestampColumns(db *gorm.DB) error {
+	// The legacy conversion below deliberately uses SQLite rowid and SQLite
+	// timestamp text semantics. MySQL installations already use parseTime with
+	// UTC and must not execute SQLite-only SQL.
+	if db == nil || db.Dialector.Name() != "sqlite" {
+		return nil
+	}
 	if timestampMigrationDone(db) {
 		return nil
 	}
@@ -215,13 +221,16 @@ func timestampMigrationDone(db *gorm.DB) bool {
 		return false
 	}
 	var item appconfig.ConfigItem
-	if err := db.Where("key = ?", timestampUTCMigrationKey).First(&item).Error; err != nil {
+	if err := db.Where("`key` = ?", timestampUTCMigrationKey).First(&item).Error; err != nil {
 		return false
 	}
 	return item.Value == "true"
 }
 
 func markTimestampMigrationDone(db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("timestamp migration database is nil")
+	}
 	if hasLegacyConfigTable(db) {
 		return fmt.Errorf("new config item table is unavailable")
 	}

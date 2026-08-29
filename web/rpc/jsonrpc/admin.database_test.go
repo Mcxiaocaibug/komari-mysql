@@ -45,6 +45,19 @@ func TestDatabaseLocationForDriver(t *testing.T) {
 	}
 }
 
+func TestMainDatabaseMaintenanceAction(t *testing.T) {
+	tests := map[metric.Driver]string{
+		metric.DriverSQLite:     string(metric.MaintenanceVacuum),
+		metric.DriverMySQL:      string(metric.MaintenanceOptimize),
+		metric.DriverPostgreSQL: string(metric.MaintenanceVacuumFull),
+	}
+	for driver, want := range tests {
+		if got := mainDatabaseMaintenanceAction(driver); got != want {
+			t.Errorf("mainDatabaseMaintenanceAction(%q) = %q, want %q", driver, got, want)
+		}
+	}
+}
+
 func TestDatabaseMaintenanceResponsePreservesLegacyMainSizes(t *testing.T) {
 	before, after := int64(100), int64(60)
 	for _, test := range []struct {

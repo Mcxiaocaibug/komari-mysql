@@ -13,15 +13,30 @@ import (
 	"github.com/komari-monitor/komari/utils"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 func DeleteClient(clientUuid string) error {
 	db := dbcore.GetDBInstance()
-	err := db.Delete(&models.Client{}, "uuid = ?", clientUuid).Error
-	if err != nil {
-		return err
-	}
-	return nil
+	return db.Transaction(func(tx *gorm.DB) error {
+		// Metric history lives in the independent Metric Store. The main DB only
+		// needs to remove rows that are not covered by a declared FK cascade.
+		if err := tx.Where("client = ?", clientUuid).Delete(&models.OfflineNotification{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("client = ?", clientUuid).Delete(&models.TrafficReportNotification{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("client = ?", clientUuid).Delete(&models.TaskResult{}).Error; err != nil {
+			return err
+		}
+
+		// Finally delete the client
+		if err := tx.Where("uuid = ?", clientUuid).Delete(&models.Client{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func SaveClientInfo(update map[string]interface{}) error {

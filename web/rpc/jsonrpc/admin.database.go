@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/komari-monitor/komari/cmd/flags"
 	"github.com/komari-monitor/komari/database/auditlog"
 	"github.com/komari-monitor/komari/database/dbcore"
 	"github.com/komari-monitor/komari/internal/metricstore"
@@ -114,10 +113,11 @@ func newDatabaseMaintenanceResponse(main, monitoring databaseMaintenanceResult) 
 }
 
 func mainDatabaseStatus() databaseStorageStatus {
+	driver := metric.Driver(dbcore.DriverName())
 	status := databaseStorageStatus{
-		Driver:   flags.NormalizeDatabaseType(flags.DatabaseType),
-		Location: databaseLocationLocal,
-		Action:   string(metric.MaintenanceVacuum),
+		Driver:   string(driver),
+		Location: databaseLocationForDriver(driver),
+		Action:   mainDatabaseMaintenanceAction(driver),
 	}
 	size, err := dbcore.StorageSize()
 	if err != nil {
@@ -154,9 +154,7 @@ func maintainMainDatabase(ctx context.Context) databaseMaintenanceResult {
 		result.SizeError = "before: " + status.Error
 	}
 
-	if !flags.IsSQLite() {
-		result.Error = "main database maintenance is only supported for SQLite"
-	} else if err := dbcore.ReclaimSpace(ctx); err != nil {
+	if err := dbcore.ReclaimSpace(ctx); err != nil {
 		result.Error = err.Error()
 	} else {
 		result.Success = true
@@ -169,6 +167,19 @@ func maintainMainDatabase(ctx context.Context) databaseMaintenanceResult {
 		result.After = int64Pointer(after)
 	}
 	return result
+}
+
+func mainDatabaseMaintenanceAction(driver metric.Driver) string {
+	switch driver {
+	case metric.DriverSQLite:
+		return string(metric.MaintenanceVacuum)
+	case metric.DriverMySQL:
+		return string(metric.MaintenanceOptimize)
+	case metric.DriverPostgreSQL:
+		return string(metric.MaintenanceVacuumFull)
+	default:
+		return ""
+	}
 }
 
 func maintainMonitoringDatabase(ctx context.Context) databaseMaintenanceResult {
