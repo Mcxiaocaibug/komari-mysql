@@ -43,6 +43,10 @@ func (m *Module) filesystemFor(name string) (*rootedDir, string, func(), error) 
 	if m.nodeFSRoot == nil {
 		return nil, name, m.lifecycleMu.RUnlock, nil
 	}
+	if resolved, resolveErr := filepath.EvalSymlinks(name); resolveErr == nil && resolved != filepath.Clean(name) && !m.withinAnyRoot(resolved) {
+		m.lifecycleMu.RUnlock()
+		return nil, "", nil, fmt.Errorf("path symlink escapes BaseDir: %s", name)
+	}
 	if filepathutil.WithinBase(m.nodeRoot, name) {
 		relative, err := filepathutil.RelativeToBase(m.nodeRoot, name)
 		if err != nil {
@@ -92,7 +96,11 @@ func (m *Module) nodeOpenFile(name string, flags int, mode os.FileMode) (*os.Fil
 	if root == nil {
 		return os.OpenFile(name, flags, mode)
 	}
-	file, err := root.handle.OpenFile(relative, flags, mode.Perm())
+	// os.Root validates a path in the kernel but on Darwin its OpenFile create
+	// path can reject a just-created child. Open the canonical absolute path
+	// after the rooted resolution above; symlink confinement is still enforced
+	// by resolveNodePathAt and filesystemFor.
+	file, err := os.OpenFile(filepath.Join(root.path, relative), flags, mode.Perm())
 	return file, nodePathError("open", name, err)
 }
 
@@ -245,7 +253,7 @@ func (m *Module) nodeReadlink(name string) (string, error) {
 	if root == nil {
 		return os.Readlink(name)
 	}
-	target, err := root.handle.Readlink(relative)
+	target, err := os.Readlink(filepath.Join(root.path, relative))
 	return target, nodePathError("readlink", name, err)
 }
 

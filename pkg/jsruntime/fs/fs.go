@@ -706,6 +706,9 @@ func fsMode(value goja.Value, fallback os.FileMode) os.FileMode {
 		if err == nil {
 			return os.FileMode(mode)
 		}
+		// A string is commonly an encoding option (for example "utf8"), not
+		// a file mode. Node keeps the default permissions in that form.
+		return fallback
 	}
 	return os.FileMode(value.ToInteger())
 }
